@@ -40,6 +40,21 @@
                         <p class="text-blue-100 text-sm font-medium">TAB 2026</p>
                     </div>
                 </div>
+                
+                <!-- Logo & Tombol Aksi Kanan Atas -->
+                <div class="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+                    <!-- Tombol Refresh -->
+                    <button onclick="loadData()" title="Muat Ulang Data" class="p-2 sm:p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all duration-500 backdrop-blur-sm border border-white/20 hover:rotate-180 focus:outline-none focus:ring-2 focus:ring-white/50">
+                        <i data-lucide="refresh-cw" class="w-5 h-5 sm:w-6 sm:h-6"></i>
+                    </button>
+
+                    <img 
+                        src="https://lh3.googleusercontent.com/d/1dyed9YL6QxBSDefdx47sf8pWXUVWD3nc" 
+                        onerror="this.onerror=null; this.src='https://drive.google.com/thumbnail?id=1dyed9YL6QxBSDefdx47sf8pWXUVWD3nc&sz=w400';"
+                        alt="Logo TAB 2026" 
+                        class="h-16 sm:h-20 w-auto object-contain drop-shadow-md bg-white/10 p-2 rounded-xl backdrop-blur-sm border border-white/20"
+                    >
+                </div>
             </div>
         </div>
     </header>
@@ -75,6 +90,17 @@
         </div>
     </main>
 
+    <!-- Modal / Lightbox Pop-up -->
+    <div id="image-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm transition-opacity p-4" onclick="if(event.target === this) closeModal()">
+        <button onclick="closeModal()" class="absolute top-4 right-4 md:top-8 md:right-8 p-3 text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors z-50">
+            <i data-lucide="x" class="w-6 h-6 md:w-8 md:h-8"></i>
+        </button>
+        <div class="relative flex flex-col items-center w-full max-w-lg">
+            <img id="modal-image" src="" alt="Full view" class="w-full h-auto max-h-[85vh] object-contain rounded-xl shadow-2xl bg-gray-900/50">
+            <p id="modal-title" class="text-white text-center mt-4 font-semibold text-lg md:text-xl max-w-md truncate"></p>
+        </div>
+    </div>
+
     <!-- Script Logika Aplikasi -->
     <script>
         // Inisialisasi ikon Lucide
@@ -90,21 +116,49 @@
             return match ? match[0] : null;
         }
 
-        // Fungsi untuk mengubah link GDrive biasa menjadi link gambar langsung
-        function getDirectImageUrl(driveLink) {
-            const id = extractDriveId(driveLink);
-            if (id) {
-                 return `https://drive.google.com/uc?export=view&id=${id}`;
-            }
-            return driveLink; // Kembalikan link aslinya jika tidak ditemukan ID
-        }
-
         // Referensi elemen DOM
         const loadingState = document.getElementById('loading-state');
         const errorState = document.getElementById('error-state');
         const emptyState = document.getElementById('empty-state');
         const galleryGrid = document.getElementById('gallery-grid');
         const errorMessage = document.getElementById('error-message');
+
+        // Referensi elemen Modal
+        const imageModal = document.getElementById('image-modal');
+        const modalImage = document.getElementById('modal-image');
+        const modalTitle = document.getElementById('modal-title');
+
+        // Fungsi membuka modal
+        function openModal(primaryUrl, secondaryUrl, fallbackUrl, title) {
+            imageModal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden'; // Mencegah scroll background
+            
+            // Set gambar dengan logika multi-fallback yang sama
+            modalImage.onerror = function() {
+                this.onerror = function() {
+                    this.onerror = null;
+                    this.src = fallbackUrl;
+                };
+                this.src = secondaryUrl;
+            };
+            
+            modalImage.src = primaryUrl;
+            modalTitle.textContent = title;
+        }
+
+        // Fungsi menutup modal
+        function closeModal() {
+            imageModal.classList.add('hidden');
+            document.body.style.overflow = ''; // Mengembalikan scroll
+            setTimeout(() => { modalImage.src = ''; }, 300); // Bersihkan src setelah animasi tertutup
+        }
+
+        // Menutup modal dengan tombol Escape di keyboard
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && !imageModal.classList.contains('hidden')) {
+                closeModal();
+            }
+        });
 
         // Fungsi utama untuk memuat data
         function loadData() {
@@ -147,8 +201,8 @@
 
                             if (driveLink) {
                                 validItemCount++;
-                                const imageUrl = getDirectImageUrl(driveLink);
-                                renderCard(dateStr, photoId, imageUrl, index);
+                                const driveId = extractDriveId(driveLink);
+                                renderCard(dateStr, photoId, driveId, driveLink, index);
                             }
                         }
                     });
@@ -169,27 +223,37 @@
             });
         }
 
-        // Fungsi untuk membuat elemen HTML kartu
-        function renderCard(date, title, imageUrl, index) {
+        // Fungsi untuk membuat elemen HTML kartu dengan multi-layer fallback
+        function renderCard(date, title, driveId, originalLink, index) {
             const card = document.createElement('div');
             card.className = "bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 opacity-0 group";
             card.style.animation = `fadeIn 0.5s ease forwards ${index * 0.1}s`;
 
-            // Membuat fallback gambar jika link Google Drive diblokir atau error
-            const fallbackImage = `https://placehold.co/600x400/f3f4f6/a1a1aa?text=Gambar+Gagal+Dimuat`;
+            // Rasio ukuran story (9:16) untuk placeholder
+            const fallbackImage = `https://placehold.co/600x1066/f3f4f6/a1a1aa?text=Privasi+Akun/File+Dibatasi`;
+            
+            // Server 1: Menggunakan lh3 server milik google yang paling diizinkan
+            const primaryImgUrl = driveId ? `https://lh3.googleusercontent.com/d/${driveId}` : originalLink;
+            // Server 2: Menggunakan thumbnail API sebagai cadangan kedua
+            const secondaryImgUrl = driveId ? `https://drive.google.com/thumbnail?id=${driveId}&sz=w1000` : fallbackImage;
 
+            // Logika onerror: Jika primary gagal, coba secondary. Jika secondary gagal, tampilkan fallback.
             card.innerHTML = `
-                <div class="relative aspect-[9/16] overflow-hidden bg-gray-100 img-loading">
+                <div id="img-container-${index}" class="relative aspect-[9/16] overflow-hidden bg-gray-100 img-loading cursor-pointer">
                     <img 
-                        src="${imageUrl}" 
+                        src="${primaryImgUrl}" 
                         alt="${title}" 
                         referrerpolicy="no-referrer"
-                        onerror="this.onerror=null; this.src='${fallbackImage}'; this.parentElement.classList.remove('img-loading');"
+                        onerror="this.onerror=function(){ this.onerror=null; this.src='${fallbackImage}'; this.parentElement.classList.remove('img-loading'); }; this.src='${secondaryImgUrl}';"
                         onload="this.parentElement.classList.remove('img-loading');"
                         class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                         loading="lazy"
                     >
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                        <div class="bg-white/90 rounded-full p-4 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 shadow-xl">
+                            <i data-lucide="zoom-in" class="w-6 h-6 text-blue-600"></i>
+                        </div>
+                    </div>
                 </div>
                 <div class="p-5">
                     <div class="flex items-center gap-2 mb-2">
@@ -200,6 +264,12 @@
                 </div>
             `;
             galleryGrid.appendChild(card);
+            
+            // Tambahkan event listener untuk Pop-up saat gambar diklik
+            const imgContainer = card.querySelector(`#img-container-${index}`);
+            imgContainer.addEventListener('click', () => {
+                openModal(primaryImgUrl, secondaryImgUrl, fallbackImage, title);
+            });
             
             // Re-inisialisasi ikon lucide untuk kartu yang baru ditambahkan
             lucide.createIcons({
